@@ -9,6 +9,7 @@ import typing
 
 tenacity_logger = logging.getLogger('tenacity')
 
+
 def count(
     host: str,
     indices: typing.List[str],

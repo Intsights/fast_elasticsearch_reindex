@@ -1,5 +1,4 @@
 import argparse
-import datetime
 import functools
 import json
 import logging
@@ -13,7 +12,7 @@ def main():
     args = parse_args()
 
     logging.basicConfig(
-        filename='fast-reindex.log',
+        filename='fast_elasticsearch_reindex.log',
         level=logging.INFO,
         format='[%(asctime)s|%(name)s|%(levelname).4s] [PID %(process)d] %(message)s',
     )
