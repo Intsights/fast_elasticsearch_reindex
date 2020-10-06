@@ -49,7 +49,7 @@ class Reindexer:
         self,
         worker_id: int,
         options: Options,
-        tqdm_queue=None,
+        progress_queue=None,
     ):
         self.src_client = elasticsearch.Elasticsearch(
             hosts=options.src_hosts,
@@ -69,7 +69,7 @@ class Reindexer:
 
         self.worker_id = worker_id
         self.options = options
-        self.tqdm_queue = tqdm_queue
+        self.progress_queue = progress_queue
 
     def __del__(
         self,
@@ -123,7 +123,7 @@ class Reindexer:
                 body += [
                     {
                         'create': {
-                            '_index': 'my-dest-index',
+                            '_index': hit['_index'],
                             '_id': hit['_id'],
                         },
                     },
@@ -158,7 +158,7 @@ class Reindexer:
                 else:
                     created += 1
 
-            self.tqdm_queue.put(
+            self.progress_queue.put(
                 ProgressUpdate(
                     created=created,
                     skipped=skipped,

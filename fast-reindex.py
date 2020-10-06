@@ -35,7 +35,7 @@ def parse_args():
     parser.add_argument(
         '--dest-hosts',
         nargs='*',
-        default=['127.0.0.1:9200'],
+        default=['127.0.0.1:9201'],
     )
 
     parser.add_argument(
@@ -102,12 +102,12 @@ def start(
     )
 
     manager = multiprocessing.Manager()
-    tqdm_queue = manager.Queue()
+    progress_queue = manager.Queue()
 
     progress_process = multiprocessing.Process(
         target=update_progress_bar,
         args=(
-            tqdm_queue,
+            progress_queue,
             total,
         ),
     )
@@ -120,7 +120,7 @@ def start(
         func = functools.partial(
             reindex,
             options=options,
-            tqdm_queue=tqdm_queue,
+            progress_queue=progress_queue,
         )
 
         pool.map(
@@ -134,12 +134,12 @@ def start(
 def reindex(
     worker_id: int,
     options: reindexer.Options,
-    tqdm_queue,
+    progress_queue,
 ):
     reindexer_instance = reindexer.Reindexer(
         worker_id=worker_id,
         options=options,
-        tqdm_queue=tqdm_queue,
+        progress_queue=progress_queue,
     )
 
     for index in options.indices:
