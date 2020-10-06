@@ -1,11 +1,8 @@
 import argparse
-import asyncio
-import ciso8601
 import datetime
+import time
 import elasticsearch
-import elasticsearch_async
 import functools
-import itertools
 import json
 import logging
 import multiprocessing
@@ -63,10 +60,9 @@ def start(
         query=args.query,
     )
 
-    if total:
-        logging.info(f'Found {total} documents')
-    else:
-        logging.error('No documents were found, exiting.')
+    if not total:
+        print('No documents were found, exiting.')
+
         return
 
     manager = multiprocessing.Manager()
@@ -82,19 +78,14 @@ def start(
 
     progress_process.start()
 
-    with multiprocessing.Pool(args.max_workers) as pool:
-        slices = list(
-            itertools.zip_longest(
-                *(iter(range(args.max_slices)),) * int(args.max_slices/args.max_workers)
-            ),
-        )
-
-        print(f'Slice Distribution: {slices}')
+    with multiprocessing.Pool(args.workers) as pool:
+        logging.info(f'Starting {args.workers} workers')
 
         func = functools.partial(
             reindex,
+            workers=args.workers,
             query=args.query,
-            max_slices=args.max_slices,
+            slice_field=args.slice_field,
             src_hosts=args.src_hosts,
             dest_hosts=args.dest_hosts,
             indices=args.indices,
@@ -103,11 +94,9 @@ def start(
             tqdm_queue=tqdm_queue,
         )
 
-        logging.info(f'Starting {len(slices)} workers')
-
         pool.map(
             func,
-            slices,
+            range(args.workers),
         )
 
     logging.info('DONE.')
@@ -123,7 +112,6 @@ def count(
     client = elasticsearch.Elasticsearch(
         hosts=host,
         timeout=120,
-        serializer=ORJsonSerializer(),
     )
 
     return client.count(
@@ -175,9 +163,10 @@ def progress_queue(
 
 
 def reindex(
-    slices,
+    worker_id,
+    workers,
     query,
-    max_slices,
+    slice_field,
     src_hosts,
     dest_hosts,
     indices,
@@ -186,21 +175,22 @@ def reindex(
     tqdm_queue,
 ):
     reindexer = Reindexer(
+        worker_id=worker_id,
+        workers=workers,
         query=query,
+        slice_field=slice_field,
         src_hosts=src_hosts,
         dest_hosts=dest_hosts,
         indices=indices,
-        slices=slices,
-        max_slices=max_slices,
         size=size,
         scroll=scroll,
         tqdm_queue=tqdm_queue,
     )
 
-    try:
-        asyncio.get_event_loop().run_until_complete(reindexer.start())
-    finally:
-        asyncio.get_event_loop().run_until_complete(reindexer.close())
+    for index in indices:
+        reindexer.reindex(
+            index=index,
+        )
 
 
 def parse_args():
@@ -209,30 +199,22 @@ def parse_args():
     parser.add_argument(
         '--src-hosts',
         nargs='*',
-        default=[
-        ],
+        default=['127.0.0.1:9200'],
     )
 
     parser.add_argument(
         '--dest-hosts',
         nargs='*',
-        default=[
-        ],
+        default=['127.0.0.1:9200'],
     )
 
     parser.add_argument(
         '--query',
-        default='{"query":{"range":{"created_date":{"gte":"now-1w", "lte": "now"}}}}',
+        default='{}',
     )
 
     parser.add_argument(
-        '--max-slices',
-        type=int,
-        default=8,
-    )
-
-    parser.add_argument(
-        '--max-workers',
+        '--workers',
         type=int,
         default=8,
     )
@@ -249,21 +231,17 @@ def parse_args():
     )
 
     parser.add_argument(
+        '--slice-field',
+    )
+
+    parser.add_argument(
         '--indices',
         nargs='*',
-        default=[
-            'domains',
-            'subdomains',
-        ],
     )
 
     args = parser.parse_args()
 
     args.query = json.loads(args.query)
-
-
-    if args.max_slices < args.max_workers:
-        raise InvalidArg('Max slices has to be greater than or equals to max workers')
 
     return args
 
@@ -271,17 +249,18 @@ def parse_args():
 class Reindexer:
     def __init__(
         self,
+        workers,
+        worker_id,
+        slice_field,
         query,
         src_hosts,
         dest_hosts,
         indices,
-        max_slices,
         size,
         scroll,
-        slices=None,
         tqdm_queue=None,
     ):
-        self.src_client = elasticsearch_async.AsyncElasticsearch(
+        self.src_client = elasticsearch.Elasticsearch(
             hosts=src_hosts,
             timeout=120,
             dead_timeout=0,
@@ -289,7 +268,7 @@ class Reindexer:
             serializer=ORJsonSerializer(),
         )
 
-        self.dest_client = elasticsearch_async.AsyncElasticsearch(
+        self.dest_client = elasticsearch.Elasticsearch(
             hosts=dest_hosts,
             timeout=120,
             dead_timeout=0,
@@ -297,56 +276,37 @@ class Reindexer:
             serializer=ORJsonSerializer(),
         )
 
+        self.workers = workers
+        self.worker_id = worker_id
+        self.slice_field = slice_field
         self.query = query
         self.indices = indices
-        self.slices = slices
-        self.max_slices = max_slices
         self.size = size
         self.scroll = scroll
         self.tqdm_queue = tqdm_queue
 
-    async def close(
+    def __del__(
         self,
     ):
-        await self.dest_client.transport.close()
-        await self.src_client.transport.close()
+        self.dest_client.transport.close()
+        self.src_client.transport.close()
 
-    async def start(
-        self,
-    ):
-        logging.info('Starting worker')
-
-        tasks = []
-
-        loop = asyncio.get_event_loop()
-
-        for index in self.indices:
-            tasks += [
-                self.reindex(
-                    index=index,
-                    slice_id=i,
-                ) for i in self.slices
-            ]
-
-        await asyncio.gather(*tasks)
-
-        logging.info('Worker done')
-
-    async def reindex(
+    def reindex(
         self,
         index,
-        slice_id,
     ):
-        logging.info(f'Indexing {index} (slice ID {slice_id})')
+        logging.info(f'Indexing {index} (worker ID {self.worker_id})')
 
-        if self.max_slices > 1:
+        if self.workers > 1:
             _slice = {
                 'slice': {
-                    'field': 'created_date',
-                    'id': slice_id,
-                    'max': self.max_slices,
+                    'id': self.worker_id,
+                    'max': self.workers,
                 },
             }
+
+            if self.slice_field:
+                _slice['field'] = self.slice_field
         else:
             _slice = {}
 
@@ -355,7 +315,7 @@ class Reindexer:
             before_sleep=tenacity.before_sleep_log(tenacity_logger, logging.WARN)
         ):
             with attempt:
-                scroll_response = await self.src_client.search(
+                scroll_response = self.src_client.search(
                     index=index,
                     scroll=self.scroll,
                     size=self.size,
@@ -377,7 +337,7 @@ class Reindexer:
                 body += [
                     {
                         'create': {
-                            '_index': index,
+                            '_index': 'my-dest-index',
                             '_id': hit['_id'],
                         },
                     },
@@ -389,7 +349,7 @@ class Reindexer:
                 before_sleep=tenacity.before_sleep_log(tenacity_logger, logging.WARN)
             ):
                 with attempt:
-                    bulk_response = await self.dest_client.bulk(
+                    bulk_response = self.dest_client.bulk(
                         body=body,
                     )
 
@@ -421,7 +381,7 @@ class Reindexer:
             if too_many_requests:
                 logging.warning('Too many requests')
 
-                await asyncio.sleep(0.250)
+                time.sleep(0.250)
 
             if retry_queue:
                 queue = retry_queue
@@ -433,7 +393,7 @@ class Reindexer:
                 before_sleep=tenacity.before_sleep_log(tenacity_logger, logging.WARN)
             ):
                 with attempt:
-                    scroll_response = await self.src_client.scroll(
+                    scroll_response = self.src_client.scroll(
                         body={
                             'scroll_id': scroll_response['_scroll_id'],
                             'scroll': self.scroll,
@@ -442,7 +402,7 @@ class Reindexer:
 
             queue = scroll_response['hits']['hits']
 
-        logging.info(f'Done indexing {index} (slice ID {slice_id})')
+        logging.info(f'Done indexing {index} (slice ID {self.worker_id})')
 
 
 class InvalidArg(Exception): pass
