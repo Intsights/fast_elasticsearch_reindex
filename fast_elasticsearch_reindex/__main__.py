@@ -5,7 +5,7 @@ import logging
 import multiprocessing
 import tqdm
 
-import reindexer
+from . import reindexer
 
 
 def main():
