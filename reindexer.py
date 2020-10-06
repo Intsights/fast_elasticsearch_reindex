@@ -1,15 +1,17 @@
+import dataclasses
 import elasticsearch
 import logging
 import orjson
 import tenacity
 import time
+import typing
 
 
 tenacity_logger = logging.getLogger('tenacity')
 
 def count(
-    host,
-    indices,
+    host: str,
+    indices: typing.List[str],
     query,
 ):
     client = elasticsearch.Elasticsearch(
@@ -23,22 +25,27 @@ def count(
     )['count']
 
 
+@dataclasses.dataclass
+class Options:
+    src_hosts: typing.List[str]
+    dest_hosts: typing.List[str]
+    indices: typing.List[str]
+    query: dict
+    workers: int
+    slice_field: str
+    size: int
+    scroll: str
+
+
 class Reindexer:
     def __init__(
         self,
-        workers,
-        worker_id,
-        slice_field,
-        query,
-        src_hosts,
-        dest_hosts,
-        indices,
-        size,
-        scroll,
+        worker_id: int,
+        options: Options,
         tqdm_queue=None,
     ):
         self.src_client = elasticsearch.Elasticsearch(
-            hosts=src_hosts,
+            hosts=options.src_hosts,
             timeout=120,
             dead_timeout=0,
             timeout_cutoff=0,
@@ -46,20 +53,15 @@ class Reindexer:
         )
 
         self.dest_client = elasticsearch.Elasticsearch(
-            hosts=dest_hosts,
+            hosts=options.dest_hosts,
             timeout=120,
             dead_timeout=0,
             timeout_cutoff=0,
             serializer=ORJsonSerializer(),
         )
 
-        self.workers = workers
         self.worker_id = worker_id
-        self.slice_field = slice_field
-        self.query = query
-        self.indices = indices
-        self.size = size
-        self.scroll = scroll
+        self.options = options
         self.tqdm_queue = tqdm_queue
 
     def __del__(
@@ -70,20 +72,20 @@ class Reindexer:
 
     def reindex(
         self,
-        index,
+        index: str,
     ):
         logging.info(f'Indexing {index} (worker ID {self.worker_id})')
 
-        if self.workers > 1:
+        if self.options.workers > 1:
             _slice = {
                 'slice': {
                     'id': self.worker_id,
-                    'max': self.workers,
+                    'max': self.options.workers,
                 },
             }
 
-            if self.slice_field:
-                _slice['field'] = self.slice_field
+            if self.options.slice_field:
+                _slice['field'] = self.options.slice_field
         else:
             _slice = {}
 
@@ -94,11 +96,11 @@ class Reindexer:
             with attempt:
                 scroll_response = self.src_client.search(
                     index=index,
-                    scroll=self.scroll,
-                    size=self.size,
+                    scroll=self.options.scroll,
+                    size=self.options.size,
                     body={
                         **_slice,
-                        **self.query,
+                        **self.options.query,
                     },
                 )
 
@@ -173,7 +175,7 @@ class Reindexer:
                     scroll_response = self.src_client.scroll(
                         body={
                             'scroll_id': scroll_response['_scroll_id'],
-                            'scroll': self.scroll,
+                            'scroll': self.options.scroll,
                         },
                     )
 

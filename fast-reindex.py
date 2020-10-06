@@ -10,11 +10,7 @@ import reindexer
 
 
 def main():
-    try:
-        args = parse_args()
-    except InvalidArg as exception:
-        print(f'Error: {exception}')
-        return
+    args = parse_args()
 
     logging.basicConfig(
         filename='fast-reindex.log',
@@ -25,130 +21,6 @@ def main():
     start(
         args=args,
     )
-
-
-def start(
-    args,
-):
-    total = reindexer.count(
-        host=args.src_hosts,
-        indices=args.indices,
-        query=args.query,
-    )
-
-    if not total:
-        print('No documents were found, exiting.')
-
-        return
-
-    manager = multiprocessing.Manager()
-    tqdm_queue = manager.Queue()
-
-    progress_process = multiprocessing.Process(
-        target=progress_queue,
-        args=(
-            tqdm_queue,
-            total,
-        ),
-    )
-
-    progress_process.start()
-
-    with multiprocessing.Pool(args.workers) as pool:
-        logging.info(f'Starting {args.workers} workers')
-
-        func = functools.partial(
-            reindex,
-            workers=args.workers,
-            query=args.query,
-            slice_field=args.slice_field,
-            src_hosts=args.src_hosts,
-            dest_hosts=args.dest_hosts,
-            indices=args.indices,
-            size=args.size,
-            scroll=args.scroll,
-            tqdm_queue=tqdm_queue,
-        )
-
-        pool.map(
-            func,
-            range(args.workers),
-        )
-
-    logging.info('DONE.')
-
-
-def progress_queue(
-    queue,
-    total,
-):
-    last_speed_log = datetime.datetime.now()
-    created = 0
-    errors = 0
-    skipped = 0
-
-    progress_bar = tqdm.tqdm(
-        unit='doc',
-        mininterval=0.5,
-        total=total,
-    )
-
-    while True:
-        try:
-            stats = queue.get()
-        except EOFError:
-            return
-
-        created += stats['created']
-        errors += stats['errors']
-        skipped += stats['skipped']
-        total = stats['created'] + stats['errors'] + stats['skipped']
-
-        progress_bar.update(total)
-
-        progress_bar.set_postfix(
-            created=created,
-            errors=errors,
-            skipped=skipped,
-        )
-
-        now = datetime.datetime.now()
-
-        if now - last_speed_log >= datetime.timedelta(seconds=5):
-            logging.info(progress_bar)
-
-            last_speed_log = now
-
-
-def reindex(
-    worker_id,
-    workers,
-    query,
-    slice_field,
-    src_hosts,
-    dest_hosts,
-    indices,
-    size,
-    scroll,
-    tqdm_queue,
-):
-    reindexer_instance = reindexer.Reindexer(
-        worker_id=worker_id,
-        workers=workers,
-        query=query,
-        slice_field=slice_field,
-        src_hosts=src_hosts,
-        dest_hosts=dest_hosts,
-        indices=indices,
-        size=size,
-        scroll=scroll,
-        tqdm_queue=tqdm_queue,
-    )
-
-    for index in indices:
-        reindexer_instance.reindex(
-            index=index,
-        )
 
 
 def parse_args():
@@ -204,7 +76,118 @@ def parse_args():
     return args
 
 
-class InvalidArg(Exception): pass
+def start(
+    args,
+):
+    total = reindexer.count(
+        host=args.src_hosts,
+        indices=args.indices,
+        query=args.query,
+    )
+
+    if not total:
+        print('No documents were found, exiting.')
+
+        return
+
+    options = reindexer.Options(
+        src_hosts=args.src_hosts,
+        dest_hosts=args.dest_hosts,
+        indices=args.indices,
+        query=args.query,
+        workers=args.workers,
+        slice_field=args.slice_field,
+        size=args.size,
+        scroll=args.scroll,
+    )
+
+    manager = multiprocessing.Manager()
+    tqdm_queue = manager.Queue()
+
+    progress_process = multiprocessing.Process(
+        target=progress_queue,
+        args=(
+            tqdm_queue,
+            total,
+        ),
+    )
+
+    progress_process.start()
+
+    with multiprocessing.Pool(args.workers) as pool:
+        logging.info(f'Starting {args.workers} workers')
+
+        func = functools.partial(
+            reindex,
+            options=options,
+            tqdm_queue=tqdm_queue,
+        )
+
+        pool.map(
+            func,
+            range(args.workers),
+        )
+
+    logging.info('DONE.')
+
+
+def reindex(
+    worker_id: int,
+    options: reindexer.Options,
+    tqdm_queue,
+):
+    reindexer_instance = reindexer.Reindexer(
+        worker_id=worker_id,
+        options=options,
+        tqdm_queue=tqdm_queue,
+    )
+
+    for index in options.indices:
+        reindexer_instance.reindex(
+            index=index,
+        )
+
+
+def progress_queue(
+    queue,
+    total,
+):
+    last_speed_log = datetime.datetime.now()
+    created = 0
+    errors = 0
+    skipped = 0
+
+    progress_bar = tqdm.tqdm(
+        unit='doc',
+        mininterval=0.5,
+        total=total,
+    )
+
+    while True:
+        try:
+            stats = queue.get()
+        except EOFError:
+            return
+
+        created += stats['created']
+        errors += stats['errors']
+        skipped += stats['skipped']
+        total = stats['created'] + stats['errors'] + stats['skipped']
+
+        progress_bar.update(total)
+
+        progress_bar.set_postfix(
+            created=created,
+            errors=errors,
+            skipped=skipped,
+        )
+
+        now = datetime.datetime.now()
+
+        if now - last_speed_log >= datetime.timedelta(seconds=5):
+            logging.info(progress_bar)
+
+            last_speed_log = now
 
 
 if __name__ == '__main__':
