@@ -37,6 +37,13 @@ class Options:
     scroll: str
 
 
+@dataclasses.dataclass
+class ProgressUpdate:
+    created: int
+    errors: int
+    skipped: int
+
+
 class Reindexer:
     def __init__(
         self,
@@ -151,11 +158,13 @@ class Reindexer:
                 else:
                     created += 1
 
-            self.tqdm_queue.put({
-                'created': created,
-                'skipped': skipped,
-                'errors': errors,
-            })
+            self.tqdm_queue.put(
+                ProgressUpdate(
+                    created=created,
+                    skipped=skipped,
+                    errors=errors,
+                ),
+            )
 
             if too_many_requests:
                 logging.warning('Too many requests')

@@ -105,7 +105,7 @@ def start(
     tqdm_queue = manager.Queue()
 
     progress_process = multiprocessing.Process(
-        target=progress_queue,
+        target=update_progress_bar,
         args=(
             tqdm_queue,
             total,
@@ -148,20 +148,19 @@ def reindex(
         )
 
 
-def progress_queue(
+def update_progress_bar(
     queue,
     total,
 ):
-    last_speed_log = datetime.datetime.now()
-    created = 0
-    errors = 0
-    skipped = 0
-
     progress_bar = tqdm.tqdm(
         unit='doc',
         mininterval=0.5,
         total=total,
     )
+
+    created = 0
+    errors = 0
+    skipped = 0
 
     while True:
         try:
@@ -169,10 +168,10 @@ def progress_queue(
         except EOFError:
             return
 
-        created += stats['created']
-        errors += stats['errors']
-        skipped += stats['skipped']
-        total = stats['created'] + stats['errors'] + stats['skipped']
+        created += stats.created
+        errors += stats.errors
+        skipped += stats.skipped
+        total = stats.created + stats.errors + stats.skipped
 
         progress_bar.update(total)
 
@@ -181,13 +180,6 @@ def progress_queue(
             errors=errors,
             skipped=skipped,
         )
-
-        now = datetime.datetime.now()
-
-        if now - last_speed_log >= datetime.timedelta(seconds=5):
-            logging.info(progress_bar)
-
-            last_speed_log = now
 
 
 if __name__ == '__main__':
