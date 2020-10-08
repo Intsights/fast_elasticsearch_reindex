@@ -10,6 +10,7 @@ from . import reindexer
 
 def main():
     args = parse_args()
+    print(args)
 
     logging.basicConfig(
         filename='fast_elasticsearch_reindex.log',
@@ -23,48 +24,59 @@ def main():
 
 
 def parse_args():
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+        prog='fast_elasticsearch_reindex',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
 
     parser.add_argument(
         '--src-hosts',
+        help='Source Elasticsearch hosts to reindex from',
         nargs='*',
         default=['127.0.0.1:9200'],
     )
 
     parser.add_argument(
         '--dest-hosts',
+        help='Destination Elasticsearch hosts to reindex to',
         nargs='*',
         default=['127.0.0.1:9201'],
     )
 
     parser.add_argument(
         '--query',
+        help='Search query',
         default='{}',
     )
 
     parser.add_argument(
         '--workers',
+        help='Number of parallel workers',
         type=int,
         default=8,
     )
 
     parser.add_argument(
         '--size',
+        help='Search request size',
         type=int,
         default=2000,
     )
 
     parser.add_argument(
         '--scroll',
+        help='Scroll request duration',
         default='5m',
     )
 
     parser.add_argument(
         '--slice-field',
+        help='Field to slice by',
     )
 
     parser.add_argument(
         '--indices',
+        help='Indices to reindex',
         nargs='*',
     )
 
