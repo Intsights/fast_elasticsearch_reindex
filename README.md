@@ -1,6 +1,15 @@
 # Fast Elasticsearch Reindex
 
-A multiprocessing based alternative to Elasticsearch Reindex API.
+A Python based alternative to Elasticsearch Reindex API with multiprocessing
+support. Since Elasticsearch Reindex API doesn't support slicing when reindexing
+from a remote cluster, the entire process can take many hours or even days,
+depending on the cluster size. Based on [Sliced
+Scroll](https://www.elastic.co/guide/en/elasticsearch/reference/master/paginate-search-results.html#slice-scroll)
+and [Bulk
+requests](https://www.elastic.co/guide/en/elasticsearch/reference/current/docs-bulk.html),
+this utility can be used as a faster alternative.
+
+![fast_elasticsearch_reindex](https://i.ibb.co/Z6QKybN/fast-elasticsearch-reindex.gif)
 
 ## Usage
 
