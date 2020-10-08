@@ -34,7 +34,14 @@ optional arguments:
                         Indices to reindex (default: None)
 ```
 
-Local Installation:
+## Installation
+
+Pip:
+```
+pip install fast_elasticsearch_reindex
+```
+
+Local:
 ```
 $ pip install .
 $ python -m fast_elasticsearch_reindex --help
