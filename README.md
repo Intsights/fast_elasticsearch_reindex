@@ -25,8 +25,13 @@ optional arguments:
                         Indices to reindex (default: None)
 ```
 
-For local environment, install the Python package with `pip install .`,
-alternatively you can use Docker:
+Local Installation:
+```
+$ pip install .
+$ python -m fast_elasticsearch_reindex --help
+```
+
+Docker:
 ```
 $ docker build -t fast_elasticsearch_reindex .
 $ docker run fast_elasticsearch_reindex --help

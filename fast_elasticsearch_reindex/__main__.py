@@ -10,7 +10,6 @@ from . import reindexer
 
 def main():
     args = parse_args()
-    print(args)
 
     logging.basicConfig(
         filename='fast_elasticsearch_reindex.log',
