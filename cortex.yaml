@@ -1,0 +1,16 @@
+---
+info:
+  title: Fast Elasticsearch Reindex
+  description: A Python based alternative to Elasticsearch Reindex API with multiprocessing
+    support.
+  x-cortex-git:
+    github:
+      alias: intsightsorg
+      repository: Intsights/fast_elasticsearch_reindex
+  x-cortex-tag: fast-elasticsearch-reindex
+  x-cortex-type: service
+  x-cortex-domain-parents:
+  - tag: threatintel
+openapi: 3.0.1
+servers:
+- url: "/"
