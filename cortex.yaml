@@ -10,7 +10,7 @@ info:
   x-cortex-tag: fast-elasticsearch-reindex
   x-cortex-type: service
   x-cortex-domain-parents:
-  - tag: threatintel
+  - tag: threatintel-rd
 openapi: 3.0.1
 servers:
 - url: "/"
