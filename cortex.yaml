@@ -10,7 +10,10 @@ info:
   x-cortex-tag: fast-elasticsearch-reindex
   x-cortex-type: service
   x-cortex-domain-parents:
-  - tag: threatintel
+  - tag: threatintel-phishing
+  x-cortex-groups:
+  - exposure:external-ship
+  - target:library
 openapi: 3.0.1
 servers:
 - url: "/"
